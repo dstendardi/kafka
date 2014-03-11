@@ -17,6 +17,9 @@ buildscript {
   repositories {
     mavenCentral()
   }
+  dependencies {
+    classpath 'com.kenshoo:gradle-fpm:0.4'
+  }
   apply from: file('gradle/buildscript.gradle'), to: buildscript
 }
 
@@ -120,6 +123,8 @@ tasks.create(name: "uploadArchivesAll", dependsOn: ['uploadCoreArchives_2_8_0', 
 
 project(':core') {
   println "Building project 'core' with Scala version $scalaVersion"
+  apply plugin: 'fpm-packaging'
+
 
   apply plugin: 'scala'
   archivesBaseName = "kafka_${baseScalaVersion}"
@@ -189,6 +194,38 @@ project(':core') {
     }
     into "$buildDir/dependant-libs-${scalaVersion}"
   }
+
+  packaging {
+      dependencies = ['default-jre']
+      baseDir = "$buildDir/dist"
+      filesArgs = [
+              "./=/usr/lib/kafka",
+              "config/server.properties=/etc/kafka/",
+              "config/log4j.properties=/etc/kafka/"
+      ]
+      extraOptions = [
+              "--name": "kafka",
+              "--post-install": "${rootProject.projectDir}/packaging/postinstall",
+              "--pre-uninstall": "${rootProject.projectDir}/packaging/preuninstall",
+              "--post-uninstall": "${rootProject.projectDir}/packaging/postuninstall",
+              "--deb-init": "${rootProject.projectDir}/packaging/debian/init.d/kafka"
+      ]
+      force = true
+  }
+
+  tasks.create(name: "deb", dependsOn:["distDir"], type:  com.kenshoo.watership.DebianTask)
+
+  tasks.create(name: "distDir", type: Copy) {
+    from (project.file("../packaging/debian/kafka")) {into "bin/"}
+    from(project.file("../config")) { into "config/" }
+    from (project.file("../packaging/log4j.properties")) {into "config/"}
+    from '../LICENSE'
+    from '../NOTICE'
+    from(configurations.runtime) { into("lib/") }
+    from(configurations.archives.artifacts.files) { into(".") }
+    into "$buildDir/dist"
+  }
+
 
   tasks.create(name: "releaseTarGz", dependsOn: configurations.archives.artifacts, type: Tar) { 
     into "kafka_${baseScalaVersion}-${version}"
